@@ -1,0 +1,126 @@
+#1 Prompt for llm_complex_clean
+Given the following record:
+
+{record}
+
+Clean the record according to these instructions:
+1. **Address Missing Values:**
+   - If city is missing, infer it as "New York" if incident_address, borough, or incident_zip suggests NYC (e.g., address contains "Brooklyn" or incident_zip is 11201). Otherwise, set to "Unknown".
+   - If borough is missing, infer from incident_address or incident_zip if possible. Otherwise, set to "Unknown".
+   - Use the following zip code ranges to infer borough (partial list):
+     - Manhattan: 10001-10282
+     - Brooklyn: 11201-11256
+     - Queens: 11101-11697
+     - Bronx: 10451-10475
+     - Staten Island: 10301-10314
+   - Leave missing complaint_type, descriptor, or closed_date as-is.
+2. **Standardize Text:**
+   - Correct spelling in city (e.g., "Brookyln" → "Brooklyn").
+   - Ensure the following text fields are in title case (e.g., "new york" → "New York", "GILES PLACE" → "Giles Place") and have no leading or trailing spaces:
+     - city
+     - borough
+     - complaint_type
+     - incident_address
+     - cross_street_1
+     - cross_street_2
+     - intersection_street_1
+     - intersection_street_2
+     - landmark
+     - community_board (standardize format to "District 08 Bronx", "District 10 Manhattan", etc.)
+   - Standardize city to "New York" for variations like "NY", "NYC".
+   - Ensure borough is one of "Manhattan", "Brooklyn", "Queens", "Bronx", "Staten Island", or "Unknown" in title case.
+3. **Validate and Format:**
+   - Ensure incident_address follows the format "Street, Borough, NY" with borough in title case (e.g., "3435 GILES PLACE" → "3435 Giles Place, Bronx, NY") or null if invalid.
+   - Convert created_date to YYYY-MM-DD (e.g., "2025-04-18T01:32:11.000" → "2025-04-18") or null if invalid.
+   - Add a time field (HH:MM:SS) extracted from created_date (e.g., "01:32:11") or null if invalid.
+   - If closed_date exists, convert to YYYY-MM-DD or null if invalid (do not add a separate time field for closed_date).
+   - Set location to null (redundant with latitude/longitude).
+4. **Categorize:**
+   - Add a complaint_category field with value "Noise" or "Non-Noise".
+   - Classify as "Noise" if complaint_type or descriptor contains keywords like "noise", "loud", "music", "banging" in a disturbance context (e.g., "Loud Music/Party" is Noise, "Illegal Parking" is Non-Noise). Default to "Non-Noise" if ambiguous.
+5. **Output Fields:**
+   - Return only the following fields in the cleaned record:
+     - unique_key
+     - created_date
+     - time
+     - incident_address
+     - city
+     - borough
+     - complaint_type
+     - descriptor
+     - incident_zip
+     - complaint_category
+     - closed_date
+     - cross_street_1
+     - cross_street_2
+     - intersection_street_1
+     - intersection_street_2
+     - landmark
+     - community_board
+   - Exclude all other fields (e.g., agency, latitude, longitude).
+
+**Output Instructions:**
+- Return ONLY the cleaned record as a valid JSON dictionary (use double quotes, null for None, true/false for booleans).
+- Do NOT include explanatory text, markdown, code blocks, or any additional content.
+- Example for input {"unique_key": 64678942, "created_date": "2025-04-18T01:32:11.000", "incident_address": "441 east 57 street", "city": null, "borough": null, "complaint_type": "noise - residential", "descriptor": "loud music/party", "incident_zip": "10022"}:
+  {"unique_key": 64678942, "created_date": "2025-04-18", "time": "01:32:11", "incident_address": "441 East 57 Street, Manhattan, NY", "city": "New York", "borough": "Manhattan", "complaint_type": "Noise - Residential", "descriptor": "Loud Music/Party", "incident_zip": "10022", "complaint_category": "Noise", "closed_date": null, "cross_street_1": "1 Avenue", "cross_street_2": "Sutton Place", "intersection_street_1": "1 Avenue", "intersection_street_2": "Sutton Place", "landmark": "East 57 Street", "community_board": "District 06 Manhattan"}
+-----------------------------------------------------------------------------------------------
+#2 Prompt for generate_complex_validation_tests
+Generate Python code with `assert` statements to validate a cleaned NYC 311 complaints record:
+
+{record}
+
+The tests must verify:
+- unique_key: Must be an integer, non-negative, not None.
+- created_date: Must be a string, non-empty, in YYYY-MM-DD format (e.g., "2025-04-18"), not None.
+- time: Must be a string in HH:MM:SS format (e.g., "01:32:11") or None.
+- incident_address: If present, non-empty, and a string, must end with ", NY" and include a valid borough (Manhattan, Brooklyn, Queens, Bronx, Staten Island, Unknown) before ", NY".
+- city: Must be a string in title case (e.g., "New York") or None.
+- borough: Must be a string in title case (e.g., "Bronx"), one of Manhattan, Brooklyn, Queens, Bronx, Staten Island, Unknown, not None.
+- complaint_type: Must be a string in title case (e.g., "Noise - Residential"), not None.
+- descriptor: Must be a string or None.
+- incident_zip: If present and not None, must be a 5-digit string (e.g., "10022") and within 10000-11697 when converted to integer.
+- complaint_category: If present, must be "Noise" or "Non-Noise".
+- closed_date: If present and not None, must be a string in YYYY-MM-DD format (e.g., "2025-04-18").
+- cross_street_1, cross_street_2, intersection_street_1, intersection_street_2, landmark, community_board: If present, must be strings in title case or None.
+
+Skip validation for fields not present in the record (e.g., agency, status, latitude, longitude).
+
+**Output Instructions**:
+- Output ONLY valid Python code starting with a single `import re` followed by a newline.
+- Each `assert` statement MUST include an error message (e.g., `assert condition, "error message"`).
+- Use separate `assert` statements for each condition (e.g., type, range, not None) to improve debuggability.
+- Do NOT include duplicate code blocks, explanatory text, markdown, code block markers (e.g., ```python), comments, or multiple `import re` statements.
+- Ensure the code is concise, executable, and validates the record exactly once.
+- Place each `assert` statement on a new line.
+- Generate a single block of code with one `import re` at the start.
+
+Example:
+import re
+assert isinstance(record["unique_key"], int), "unique_key must be an integer"
+assert record["unique_key"] >= 0, "unique_key must be non-negative"
+assert record["unique_key"] is not None, "unique_key cannot be None"
+assert isinstance(record["created_date"], str), "created_date must be a string"
+assert record["created_date"] != "", "created_date cannot be empty"
+assert re.match(r"^\d{4}-\d{2}-\d{2}$", record["created_date"]), "created_date must be YYYY-MM-DD"
+assert record["created_date"] is not None, "created_date cannot be None"
+assert record["time"] is None or re.match(r"^\d{2}:\d{2}:\d{2}$", record["time"]), "time must be HH:MM:SS or None"
+assert record["incident_address"] is None or (isinstance(record["incident_address"], str) and record["incident_address"] != "" and any(record["incident_address"].endswith(f", {b}, NY") for b in ["Manhattan", "Brooklyn", "Queens", "Bronx", "Staten Island", "Unknown"])), "incident_address must end with , Borough, NY"
+assert record["city"] is None or (isinstance(record["city"], str) and record["city"].title() == record["city"]), "city must be in title case or None"
+assert isinstance(record["borough"], str), "borough must be a string"
+assert record["borough"] in ["Manhattan", "Brooklyn", "Queens", "Bronx", "Staten Island", "Unknown"], "borough must be a valid NYC borough"
+assert record["borough"].title() == record["borough"], "borough must be in title case"
+assert record["borough"] is not None, "borough cannot be None"
+assert isinstance(record["complaint_type"], str), "complaint_type must be a string"
+assert record["complaint_type"].title() == record["complaint_type"], "complaint_type must be in title case"
+assert record["complaint_type"] is not None, "complaint_type cannot be None"
+assert record["descriptor"] is None or isinstance(record["descriptor"], str), "descriptor must be a string or None"
+assert record["incident_zip"] is None or (re.match(r"^\d{5}$", str(record["incident_zip"])) and 10000 <= int(record["incident_zip"]) <= 11697), "incident_zip must be a 5-digit string in range 10000-11697 or None"
+assert "complaint_category" not in record or record["complaint_category"] in ["Noise", "Non-Noise"], "complaint_category must be Noise or Non-Noise"
+assert record["closed_date"] is None or (isinstance(record["closed_date"], str) and re.match(r"^\d{4}-\d{2}-\d{2}$", record["closed_date"])), "closed_date must be YYYY-MM-DD or None"
+assert record["cross_street_1"] is None or (isinstance(record["cross_street_1"], str) and record["cross_street_1"].title() == record["cross_street_1"]), "cross_street_1 must be in title case or None"
+assert record["cross_street_2"] is None or (isinstance(record["cross_street_2"], str) and record["cross_street_2"].title() == record["cross_street_2"]), "cross_street_2 must be in title case or None"
+assert record["intersection_street_1"] is None or (isinstance(record["intersection_street_1"], str) and record["intersection_street_1"].title() == record["intersection_street_1"]), "intersection_street_1 must be in title case or None"
+assert record["intersection_street_2"] is None or (isinstance(record["intersection_street_2"], str) and record["intersection_street_2"].title() == record["intersection_street_2"]), "intersection_street_2 must be in title case or None"
+assert record["landmark"] is None or (isinstance(record["landmark"], str) and record["landmark"].title() == record["landmark"]), "landmark must be in title case or None"
+assert record["community_board"] is None or (isinstance(record["community_board"], str) and record["community_board"].title() == record["community_board"]), "community_board must be in title case or None"
